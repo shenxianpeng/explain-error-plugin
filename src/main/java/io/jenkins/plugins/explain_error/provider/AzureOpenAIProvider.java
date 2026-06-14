@@ -106,9 +106,14 @@ public class AzureOpenAIProvider extends BaseAIProvider {
 
     @Override
     public Assistant createAssistant() {
+        return createAssistant(null);
+    }
+
+    @Override
+    public Assistant createAssistant(@CheckForNull Double temperature) {
         return (errorLogs, language, customContext) -> {
             try {
-                return requestAnalysis(errorLogs, language, customContext, null, null);
+                return requestAnalysis(errorLogs, language, customContext, temperature, null, null);
             } catch (ExplanationException e) {
                 throw new RuntimeException(e.getMessage(), e);
             }
@@ -128,9 +133,15 @@ public class AzureOpenAIProvider extends BaseAIProvider {
 
     @Override
     public Assistant createAssistant(@CheckForNull Item item, @CheckForNull Authentication authentication) {
+        return createAssistant(item, authentication, null);
+    }
+
+    @Override
+    public Assistant createAssistant(@CheckForNull Item item, @CheckForNull Authentication authentication,
+                                     @CheckForNull Double temperature) {
         return (errorLogs, language, customContext) -> {
             try {
-                return requestAnalysis(errorLogs, language, customContext, item, authentication);
+                return requestAnalysis(errorLogs, language, customContext, temperature, item, authentication);
             } catch (ExplanationException e) {
                 throw new RuntimeException(e.getMessage(), e);
             }
@@ -185,6 +196,7 @@ public class AzureOpenAIProvider extends BaseAIProvider {
     }
 
     private JenkinsLogAnalysis requestAnalysis(String errorLogs, String language, String customContext,
+                                               @CheckForNull Double temperature,
                                                @CheckForNull Item item, @CheckForNull Authentication authentication)
             throws ExplanationException {
         HttpClient client = newJenkinsHttpClientBuilder()
@@ -192,7 +204,7 @@ public class AzureOpenAIProvider extends BaseAIProvider {
                 .build();
         try {
             String content = requestRawContent(client,
-                    buildAnalysisRequestBody(errorLogs, language, customContext), item, authentication);
+                    buildAnalysisRequestBody(errorLogs, language, customContext, temperature), item, authentication);
             return parseAnalysis(content);
         } catch (IOException e) {
             throw new ExplanationException("error", "Failed to communicate with Azure OpenAI", e);
@@ -280,17 +292,20 @@ public class AzureOpenAIProvider extends BaseAIProvider {
         return URI.create(endpoint + apiPath);
     }
 
-    private String buildAnalysisRequestBody(String errorLogs, String language, String customContext) throws IOException {
+    private String buildAnalysisRequestBody(String errorLogs, String language, String customContext,
+                                            @CheckForNull Double temperature) throws IOException {
         if (getApiType() == ApiType.RESPONSES) {
-            return buildResponsesAnalysisRequest(errorLogs, language, customContext);
+            return buildResponsesAnalysisRequest(errorLogs, language, customContext, temperature);
         }
-        return buildChatCompletionsAnalysisRequest(errorLogs, language, customContext);
+        return buildChatCompletionsAnalysisRequest(errorLogs, language, customContext, temperature);
     }
 
-    private String buildChatCompletionsAnalysisRequest(String errorLogs, String language, String customContext)
-            throws IOException {
+    private String buildChatCompletionsAnalysisRequest(String errorLogs, String language, String customContext,
+                                                       @CheckForNull Double temperature) throws IOException {
         ObjectNode payload = OBJECT_MAPPER.createObjectNode();
-        payload.put("temperature", 0.3);
+        if (temperature != null) {
+            payload.put("temperature", temperature);
+        }
         payload.put("max_tokens", ANALYSIS_MAX_OUTPUT_TOKENS);
 
         ArrayNode messages = payload.putArray("messages");
@@ -305,12 +320,15 @@ public class AzureOpenAIProvider extends BaseAIProvider {
         return OBJECT_MAPPER.writeValueAsString(payload);
     }
 
-    private String buildResponsesAnalysisRequest(String errorLogs, String language, String customContext)
-            throws IOException {
+    private String buildResponsesAnalysisRequest(String errorLogs, String language, String customContext,
+                                                 @CheckForNull Double temperature) throws IOException {
         ObjectNode payload = OBJECT_MAPPER.createObjectNode();
         payload.put("model", getDeployment());
         payload.put("store", false);
         payload.put("max_output_tokens", ANALYSIS_MAX_OUTPUT_TOKENS);
+        if (temperature != null) {
+            payload.put("temperature", temperature);
+        }
         addGpt5LatencyControls(payload);
 
         ArrayNode input = payload.putArray("input");

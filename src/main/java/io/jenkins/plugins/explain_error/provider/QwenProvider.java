@@ -54,45 +54,58 @@ public class QwenProvider extends BaseAIProvider {
 
     @Override
     public Assistant createAssistant() {
-        ChatModel model = buildChatModel(null, null);
-        return AiServices.create(Assistant.class, model);
+        return createAssistant(null, null, null);
     }
 
     @Override
     public Assistant createAssistant(@CheckForNull Item item, @CheckForNull Authentication authentication) {
-        ChatModel model = buildChatModel(item, authentication);
+        return createAssistant(item, authentication, null);
+    }
+
+    @Override
+    public Assistant createAssistant(@CheckForNull Double temperature) {
+        return createAssistant(null, null, temperature);
+    }
+
+    @Override
+    public Assistant createAssistant(@CheckForNull Item item, @CheckForNull Authentication authentication,
+                                     @CheckForNull Double temperature) {
+        ChatModel model = buildChatModel(item, authentication, temperature);
         return AiServices.create(Assistant.class, model);
     }
 
     @Override
     public io.jenkins.plugins.explain_error.autofix.FixAssistant createFixAssistant() {
-        ChatModel model = buildChatModel(null, null);
+        ChatModel model = buildChatModel(null, null, null);
         return AiServices.create(io.jenkins.plugins.explain_error.autofix.FixAssistant.class, model);
     }
 
     @Override
     public io.jenkins.plugins.explain_error.autofix.FixAssistant createFixAssistant(@CheckForNull Item item,
                                                                                      @CheckForNull Authentication authentication) {
-        ChatModel model = buildChatModel(item, authentication);
+        ChatModel model = buildChatModel(item, authentication, null);
         return AiServices.create(io.jenkins.plugins.explain_error.autofix.FixAssistant.class, model);
     }
 
-    private ChatModel buildChatModel(@CheckForNull Item item, @CheckForNull Authentication authentication) {
+    private ChatModel buildChatModel(@CheckForNull Item item, @CheckForNull Authentication authentication,
+                                     @CheckForNull Double temperature) {
         String resolvedApiKey = resolveApiKey(item, authentication);
         if (resolvedApiKey == null) {
             throw new IllegalStateException("No API key configured for Qwen");
         }
 
-        return OpenAiChatModel.builder()
+        var builder = OpenAiChatModel.builder()
                 .httpClientBuilder(newLangChainHttpClientBuilder())
                 .baseUrl(getUrl())
                 .apiKey(resolvedApiKey)
                 .modelName(getModel())
-                .temperature(0.3)
                 .responseFormat(ResponseFormat.JSON)
                 .logRequests(LOGGER.isLoggable(Level.FINE))
-                .logResponses(LOGGER.isLoggable(Level.FINE))
-                .build();
+                .logResponses(LOGGER.isLoggable(Level.FINE));
+        if (temperature != null) {
+            builder.temperature(temperature);
+        }
+        return builder.build();
     }
 
     /**

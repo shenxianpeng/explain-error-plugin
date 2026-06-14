@@ -92,6 +92,7 @@ class AzureOpenAIProviderTest {
         JsonNode payload = OBJECT_MAPPER.readTree(requestBody.get());
         assertEquals(1000, payload.path("max_tokens").asInt());
         assertNotNull(payload.path("messages"));
+        assertFalse(payload.has("temperature"), "Unset temperature should be omitted from Azure request payload");
         assertTrue(requestBody.get().contains("Return ONLY valid JSON"));
         assertTrue(explanation.contains("Azure OpenAI worked"));
         assertTrue(explanation.contains("Check deployment configuration"));
@@ -193,6 +194,42 @@ class AzureOpenAIProviderTest {
         assertEquals(2000, payload.path("max_tokens").asInt());
         assertTrue(requestBody.get().contains("\"Jenkins build failed. Analyze and suggest a fix."));
         assertTrue(result.contains("\"fixable\":true"));
+    }
+
+    @Test
+    void explainErrorSendsConfiguredTemperature(JenkinsRule jenkins) throws Exception {
+        assertNotNull(jenkins.jenkins);
+        addStringCredential("azure-temperature-key", "test-azure-key");
+
+        AtomicReference<String> requestBody = new AtomicReference<>();
+
+        server.createContext("/openai/deployments/temperature-deployment/chat/completions", new JsonHandler(exchange -> {
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            return """
+                    {
+                      "choices": [
+                        {
+                          "message": {
+                            "content": "{\\"errorSummary\\":\\"Azure temperature worked\\",\\"resolutionSteps\\":[\\"Check temperature\\"],\\"bestPractices\\":[\\"Prefer provider defaults when unset\\"],\\"errorSignature\\":\\"FAILURE: temperature verified\\"}"
+                          }
+                        }
+                      ]
+                    }
+                    """;
+        }));
+
+        String endpoint = "http://127.0.0.1:" + server.getAddress().getPort();
+        AzureOpenAIProvider provider = new AzureOpenAIProvider(
+                endpoint,
+                "temperature-deployment",
+                "2025-01-01-preview",
+                "azure-temperature-key",
+                AzureOpenAIProvider.ApiType.CHAT_COMPLETIONS);
+
+        provider.explainError("FAILURE: sample error", null, "English", null, null, null, 0.65);
+
+        JsonNode payload = OBJECT_MAPPER.readTree(requestBody.get());
+        assertEquals(0.65, payload.path("temperature").asDouble());
     }
 
     @Test
