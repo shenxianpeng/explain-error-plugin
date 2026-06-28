@@ -39,6 +39,7 @@ Whether it’s a compilation error, test failure, or deployment hiccup, this plu
 
 * **One-click error analysis** on any console output
 * **Pipeline-ready** with a simple `explainError()` step
+* **Automatic explanation on failure** — failed builds are explained without any pipeline change when the global toggle is enabled
 * **Workspace Context** *(opt-in)* — include selected workspace files for more accurate explanations
 * **AI auto-fix** *(experimental)* — automatically opens a pull request on GitHub, GitLab, or Bitbucket with AI-generated code changes when a build fails
 * **AI-powered explanations** via Anthropic Claude, AWS Bedrock, Azure OpenAI, DeepSeek, Google Gemini, LangGraph, Microsoft Foundry, Ollama, OpenAI GPT models, Qwen, or generic Okta-authenticated company AI gateways
@@ -83,6 +84,8 @@ Whether it’s a compilation error, test failure, or deployment hiccup, this plu
 | **Temperature** | Creativity control (0.0–2.0). Leave empty to use the provider default. | *Optional* |
 | **Language** | Language for AI explanations (e.g. `English`, `中文`, `日本語`). Can be overridden at folder and step level. | `English` |
 | **Custom Context** | Additional instructions or context for the AI (e.g., KB article links, organization-specific troubleshooting steps) | *Optional*. Can be overridden at folder and step level. |
+| **Automatically explain failed builds** | When enabled (and AI Error Explanation is active), all failed builds (result `FAILURE`) are automatically explained without any pipeline change. Builds already explained via `explainError()` step are skipped. | Disabled |
+| **Max Log Lines** *(auto-explain)* | Number of console log lines read per build for automatic explanation. Increase this for models with large context windows (e.g. DeepSeek, Kimi). Only visible when **Automatically explain failed builds** is enabled. | `100` |
 
 `Custom Okta AI` adds provider-specific fields for `Okta Token URL`, `Client ID`, `Client Secret`, and optional `Scope`, `API Version`, `App Key`, and custom access-token header settings. This is intended for generic company AI gateways that require an OAuth client-credentials exchange before the chat call.
 
@@ -283,6 +286,8 @@ unclassified:
   explainError:
     # ... your provider configuration above ...
     enableExplanation: true
+    # enableAutoExplainOnFailure: true # Optional, automatically explain failed builds without pipeline changes
+    # autoExplainMaxLogLines: 100    # Optional, number of log lines read per build (increase for large-context models)
     # temperature: 0.7 # Optional, leave empty for provider default
     # language: "English" # Optional, defaults to English
     # customContext: "Additional context for the AI" # Optional
@@ -559,6 +564,28 @@ Works with Freestyle, Declarative, or any job type.
 
 ![AI Error Explanation](docs/images/console-output.png)
 
+### Method 3: Automatic (RunListener)
+
+No pipeline changes needed. When **"Automatically explain failed builds"** is enabled in the global plugin
+configuration, every failed build (result `FAILURE`) is automatically explained by the AI as soon as it completes.
+Unstable, aborted and not-built results are intentionally left untouched.
+
+The listener skips builds that already carry an `ErrorExplanationAction` (e.g. from an explicit
+`explainError()` step), so adding the toggle alongside an existing pipeline step produces no
+duplicate explanations.
+
+To enable:
+
+1. Go to `Manage Jenkins` → `Configure System`
+2. Find the **"Explain Error Plugin Configuration"** section
+3. Check **"Automatically explain failed builds"**
+4. Optionally adjust **"Max Log Lines"** — default is `100`. If your model supports a large context window (e.g. DeepSeek, Kimi), increase this to capture more of the build log for a more accurate explanation.
+5. Save
+
+All existing configuration (provider, model, language, custom context, quota limits) applies
+to auto-explained builds in the same way as pipeline-step and console-action requests.
+Requests from the RunListener are tracked under the `run_listener` entry point in usage metrics.
+
 ## Troubleshooting
 
 | Issue | Solution |
@@ -573,10 +600,11 @@ Enable debug logs:
 
 ## Best Practices
 
-1. Use `explainError()` in `post { failure { ... } }` blocks
-2. Apply `logPattern` to focus on relevant errors
-3. Monitor usage metrics and quota outcomes to control costs (see [AI Provider Call Quotas](docs/usage-quota.md))
-4. Keep plugin updated regularly
+1. Use `explainError()` in `post { failure { ... } }` blocks for fine-grained control
+2. Enable **"Automatically explain failed builds"** to cover all jobs without pipeline changes
+3. Apply `logPattern` to focus on relevant errors
+4. Monitor usage metrics and quota outcomes to control costs (see [AI Provider Call Quotas](docs/usage-quota.md))
+5. Keep plugin updated regularly
 
 ## Support & Community
 
